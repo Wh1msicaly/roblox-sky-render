@@ -188,6 +188,7 @@ address instead.
 | `images/` | Screenshots for the HTTP allow list steps. |
 | `examples/` | The renders shown above. |
 | `ACKNOWLEDGEMENTS.md` | Credits and licenses for the work this skill builds on. |
+| `LICENSE` | MIT license for this repository. |
 
 ## Acknowledgements
 
@@ -198,3 +199,9 @@ address instead.
   comes from.
 
 See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for details and lualzw's license text.
+
+## License
+
+[MIT](LICENSE). The license covers the skill, its scripts and its documentation. The example
+images in `examples/` show game art from On Tap. They're included to demonstrate the skill and are
+not covered by the MIT license.
