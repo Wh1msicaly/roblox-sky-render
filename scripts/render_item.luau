@@ -653,6 +653,8 @@ local function render(overrides)
 	table.clear(notes)
 	table.clear(undo)
 
+	-- Wall-clock time (not os.clock, which ignores the frame waits this render depends on).
+	local started = time()
 	local ok, result = xpcall(main, function(e)
 		return tostring(e) .. "\n" .. debug.traceback()
 	end)
@@ -662,6 +664,7 @@ local function render(overrides)
 	busy = false
 
 	local text = (ok and result or ("FAILED: " .. tostring(result)))
+	text ..= string.format("\ntime %.2fs (wall clock: staging, shots, composite and restore)", time() - started)
 	if #notes > 0 then
 		text ..= "\nNOTES:\n- " .. table.concat(notes, "\n- ")
 	end

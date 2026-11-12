@@ -80,6 +80,8 @@ is never moved or modified.
 
 ## Workflow
 
+Start the benchmark clock first, as the first tool call of the request (see Benchmark below).
+
 1. Find the Studio instance (`list_roblox_studios`) and confirm which place to use if more than
    one is open. Find the item (`search_game_tree`) and note its full path.
 
@@ -118,6 +120,7 @@ is never moved or modified.
    studio lighting, key light alignment 1.00 (1 = ideal)
    coverage: 8.8% opaque, 0.4% semi-transparent, bounds x 44-474 y 148-365
    backdrop (neon) calibration white=255,255,255 black=0,0,0 osScale=1
+   time 3.41s (wall clock: staging, shots, composite and restore)
    ```
 
    Check: calibration is 255 / 0; bounds do not touch 0 or size-1 (clipped); the opaque vs
@@ -133,7 +136,27 @@ is never moved or modified.
    options until it is right, then `shared.SkyRenderBoard(nil)` to remove the board.
 
 6. Deliver (see below), then `shared.SkyRenderClear()` unless the user wants the results kept in
-   the session.
+   the session. Stop the benchmark clock once the images are saved and sent.
+
+## Benchmark (first request to images sent)
+
+Time the whole job with `scripts/benchmark.py`, which records wall-clock stamps. Run it from any
+directory; the state lives in the system temp folder between calls.
+
+1. **Start (T0):** the first tool call of the request runs `python scripts/benchmark.py start`.
+2. **Phase marks:** after each phase finishes, run `python scripts/benchmark.py mark <phase>`:
+   `setup` (renderer and exporter pastes, if this run does them), `render` (all renders done),
+   `export` (all part calls returned), `assemble` (`assemble_png.py` finished).
+3. **Render detail (optional):** the `time` line in each render report is measured inside Studio
+   around that render, so it excludes the export. Use it to compare individual renders.
+4. **Deliver (T1):** when the last PNG is saved or sent, run
+   `python scripts/benchmark.py stop --images <N>`. It prints the report.
+5. **Report:** the phase table, total T0 to T1, the image count, and seconds per image. Model
+   thinking and tool round trips between steps fall outside the phases, so the total is usually a
+   little more than the phases added up. Say so rather than hiding it.
+
+Run it warm (renderer and exporter already pasted) for a fair steady-state number, and say which
+kind of run it was.
 
 ## Options
 
