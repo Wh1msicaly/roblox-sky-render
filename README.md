@@ -187,3 +187,14 @@ address instead.
 | `scripts/png_receiver.py` | HTTP fallback: localhost-only receiver that writes the PNG files. |
 | `images/` | Screenshots for the HTTP allow list steps. |
 | `examples/` | The renders shown above. |
+| `ACKNOWLEDGEMENTS.md` | Credits and licenses for the work this skill builds on. |
+
+## Acknowledgements
+
+- **[lualzw](https://github.com/Rochet2/lualzw)** by Rochet2 (MIT) was the reference for the
+  LZW compression in the no-HTTP export. The LZW here is its own implementation, and no lualzw
+  code is included.
+- The **Photobooth** plugin for Roblox Studio is where the black-and-white backdrop technique
+  comes from.
+
+See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for details and lualzw's license text.
