@@ -52,7 +52,7 @@ Start a new Claude Code session afterwards so the skill gets picked up. To updat
   and `screen_capture` tools.
 - Studio in **Edit** mode (not a playtest), with the 3D viewport visible and not minimised.
 - Studio's Graphics Mode must not be OpenGL, because screenshots don't work in that mode.
-- **Python 3**, only if you want PNG files saved to disk.
+- **Python 3**, only if you want PNG files saved to disk. No extra packages are needed.
 
 ## Using it
 
@@ -108,19 +108,45 @@ it changes is put back afterwards, even if a render fails.
 The full method, all the options (camera angle, field of view, size, padding, lighting, particles
 and more) and a troubleshooting table are in [SKILL.md](SKILL.md).
 
-## Saving PNG files: the one setting you need to change
+## Saving PNG files
 
-Rendering works out of the box. **Saving the images as PNG files needs one Studio permission
-first.** Studio sends the pixels to a small local receiver (`scripts/png_receiver.py`) at
-`127.0.0.1:8765`, and it blocks that request until the address is on the Assistant's HTTP allow
-list. Without it, the export fails with:
+### Default: no setup
+
+Saving the images as PNGs works out of the box in Claude Code, with no Studio permissions to change.
+
+Studio can only hand back text, and each `execute_luau` result is cut off at 100,000 characters.
+But when a result is too big to show, Claude Code saves it straight to a file. The exporter uses
+that:
+
+1. **Compress in Studio.** Each pixel is stored as its difference from the one to its left, which
+   turns smooth shading into near-zeros. Then LZW compression, then packing into 7-bit characters,
+   since all 128 ASCII characters survive the trip.
+2. **Send fixed-size pieces.** Each piece is just under the 100,000-character limit, so Claude Code
+   always saves it to a file. Claude never reads or copies the data, so nothing can get garbled.
+3. **Rebuild on your PC.** `scripts/assemble_png.py` finds the saved pieces, checks each one,
+   decodes them and writes the PNGs. It uses only Python's standard library, so there's nothing
+   to install.
+
+| Six 512×512 cat renders | Characters | `execute_luau` calls |
+|---|---|---|
+| Plain base64 of the raw pixels | 8,388,624 | 84 |
+| **Filter + LZW + 7-bit characters** | **1,047,469** | **12** |
+
+That's about 8× smaller. All six came back pixel-identical to the HTTP export, confirmed with
+checksums on every piece and on the final pixels.
+
+### Fallback: HTTP
+
+If your Claude client cuts off large results instead of saving them, the skill falls back to the
+original method. Studio sends the pixels to a small local receiver (`scripts/png_receiver.py`) at
+`127.0.0.1:8765`. This needs one Studio permission first, or the export fails with:
 
 ```text
 HttpService request denied: domain 127.0.0.1:8765 is not in the Assistant HTTP allowlist
 ```
 
-You only need to do this once. You don't need it for rendering or the preview board. If the export
-gets blocked, Claude will stop and walk you through these steps.
+You only need to set this up once, and only for the fallback. If the export gets blocked, Claude
+will stop and walk you through these steps.
 
 **1. In Studio's Assistant panel, open the ⋯ menu at the top right.**
 
@@ -155,7 +181,9 @@ address instead.
 |---|---|
 | `SKILL.md` | The instructions Claude follows. |
 | `scripts/render_item.luau` | The renderer. Pasted into Studio once per session. |
-| `scripts/export_png.luau` | Sends finished renders to the local receiver. |
-| `scripts/png_receiver.py` | Localhost-only receiver that writes the PNG files. |
+| `scripts/export_nohttp.luau` | Compresses renders and returns them in fixed-size pieces (default export). |
+| `scripts/assemble_png.py` | Rebuilds the PNGs from the saved pieces. Standard library only. |
+| `scripts/export_png.luau` | HTTP fallback: sends finished renders to the local receiver. |
+| `scripts/png_receiver.py` | HTTP fallback: localhost-only receiver that writes the PNG files. |
 | `images/` | Screenshots for the HTTP allow list steps. |
 | `examples/` | The renders shown above. |

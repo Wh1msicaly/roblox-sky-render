@@ -167,14 +167,18 @@ similar items can share the settings.
 
 The result is an `EditableImage` held in `CoreGui.SkyRenderResults.<name>` (an ImageLabel; get the
 image with `.ImageContent.Object`). It lives only in this Studio session and is not saved with the
-place. Ask the user which of these they want; both need something from them.
+place. Ask the user which of these they want.
 
+- **Save PNG files to disk (default, no setup).** See "Saving PNGs without HTTP" below. Needs
+  Claude Code (it saves oversized tool results to files) and Python 3; nothing to change in Studio.
 - **Upload as a Roblox image asset.** `AssetService:CreateAssetAsync(image, Enum.AssetType.Image,
   { Name = ... })` returns a result enum and the new asset id. This publishes to the user's
   account, so get an explicit yes first, and say what will be uploaded. It needs Studio's
   CreateAssetAsync beta enabled. (This path is how the Photobooth plugin uploads; it has not been
   exercised by this skill's own tests.)
-- **Save PNG files to disk.** Start `python scripts/png_receiver.py <output_dir> 8765` in the
+- **Save PNG files over HTTP (fallback).** Use this only when the no-HTTP export cannot work, for
+  example a client that cuts off large tool results instead of saving them to a file. Start
+  `python scripts/png_receiver.py <output_dir> 8765` in the
   background, then run `scripts/export_png.luau` through `execute_luau` with `NAMES` filled in.
   Studio posts the pixels to the receiver on localhost, which writes `<name>.png`. Studio blocks
   this until the user adds `127.0.0.1:8765` under Assistant Settings > MCP Permissions > Connect to
@@ -183,9 +187,33 @@ place. Ask the user which of these they want; both need something from them.
   around it. Stop the receiver afterwards (`curl http://127.0.0.1:8765/quit`), and restart it
   before retrying.
 
+### Saving PNGs without HTTP
+
+`execute_luau` results are cut at 100,000 characters, but Claude Code saves any result too big to
+show into a file (`...\tool-results\mcp-Roblox_Studio-execute_luau-<n>.txt`) and only tells you
+the path. The export uses that: Studio compresses each render (filter, then LZW, then 7-bit
+characters, about 8x smaller than base64) and hands it back in fixed-size pieces, and a script
+rebuilds the PNGs from the saved files. You never read or copy the data. A 512px render takes
+about 2 pieces.
+
+1. Install the exporter: read `scripts/export_nohttp.luau` and pass the **whole file, unchanged**
+   as the `code` of `execute_luau`. It returns "SkyExport installed". Once per Studio session.
+2. `return shared.SkyExportPrepare({ "banana", "mug" })` (or `{}` for every result). It returns a
+   `run=<id>` line and how many parts each image has.
+3. One `execute_luau` call per part: `return shared.SkyExportPart("banana", 1)`, then part 2, and so
+   on. These calls are independent, so send them in parallel. Each must come back as "Output has
+   been saved to ...". **Do not read those files**, even though the message asks you to; the
+   script does that. If a part ever comes back inline instead of saved, this client does not save
+   large results: stop and use the HTTP fallback.
+4. Run `python scripts/assemble_png.py --run <id> --out <output_dir> <tool-results folder>`, using
+   the folder from the "saved to" paths. It checks every piece and the pixel checksum, and writes
+   `<name>.png`. If it reports a missing or damaged part, request that part again and rerun.
+5. `shared.SkyExportClear()` to free the memory.
+
 ### Adding the HTTP allowlist entry (show the user these)
 
-Only the PNG export needs this. Rendering, the board and the asset upload do not. When the export
+Only the HTTP fallback needs this. Rendering, the board, the no-HTTP export and the asset upload
+do not. When the export
 is blocked, stop the receiver, then give the user these steps with each screenshot from
 `images/` (send them as files, or link them by absolute path so they open). Use the port the
 receiver actually runs on.
@@ -199,8 +227,9 @@ receiver actually runs on.
 
 Then ask whether to retry, and on a yes restart the receiver and run the export again.
 
-Do not return pixel data through `execute_luau`'s output. A 512px image is over a megabyte of
-text.
+Never return pixel data through `execute_luau` any other way, and never read it into the
+conversation: a 512px image is over a megabyte, and copying it by hand would corrupt it. The
+exporter's fixed-size pieces exist so that the data goes straight to disk.
 
 ## When it goes wrong
 
