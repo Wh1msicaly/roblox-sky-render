@@ -80,8 +80,10 @@ is never moved or modified.
 
 ## Workflow
 
-Do not run any timing commands during the job. Claude Code timestamps every call, so the run is
-timed afterwards from the session transcript (see Benchmark below).
+Do not run any timing commands while the job is under way. Claude Code timestamps every call, so
+the run is timed from the session transcript in one call at the very end (step 7, and Benchmark
+below). **Every job ends with that timing, and the final message to the user ends with the total
+time.** Do not skip it and do not wait to be asked.
 
 1. Find the Studio instance (`list_roblox_studios`) and confirm which place to use if more than
    one is open. Then run this **status check** through `execute_luau` (datamodel `Edit`), with
@@ -182,15 +184,28 @@ timed afterwards from the session transcript (see Benchmark below).
 6. Deliver (see below), then `shared.SkyRenderClear()` unless the user wants the results kept in
    the session.
 
+7. **Time it (required, every job).** As the last tool call of the job, after the PNGs are saved
+   and Studio is cleaned up, run `python scripts/benchmark.py`. Then end your final message
+   to the user with the result, in this form:
+
+   ```
+   Total time: 2m 10s for 6 images (21.6 s per image), cold run.
+   ```
+
+   Add the phase table above that line when the job was more than a single image or when anything
+   was slow. The total is the last line of the message, never left out, and never only in a tool
+   result the user may not see.
+
 ## Benchmark (user's prompt to the last message)
 
-Only when the user asks how long a job took. It costs no tool calls during the job: Claude Code
-writes every prompt, tool call and result to the session transcript
+Always, at the end of every job (workflow step 7), whether or not the user asked. It costs one
+tool call: Claude Code writes every prompt, tool call and result to the session transcript
 (`~/.claude/projects/<project>/<session>.jsonl`) with a timestamp, and `scripts/benchmark.py`
-reads them afterwards.
+reads them.
 
-1. **When:** after the job's turn has ended, in a later turn. Run mid-job, it only sees the calls
-   made so far.
+1. **When:** as the last tool call of the job's turn. It sees every call up to and including
+   itself, so only the final message (a couple of seconds) is left out. If the user later asks
+   about a finished job, run it again then for the full figure.
 2. **Run:** `python scripts/benchmark.py` picks the newest session that ran this skill and its last
    render request. Pass a session id or `.jsonl` path to choose another session, `--list` and
    `--turn <n>` to choose another request in it, and `--calls` to list every call with its timing.
@@ -202,7 +217,8 @@ reads them afterwards.
    around that render. Use it to compare individual renders.
 
 Say whether the run was cold (renderer and exporter pasted in this job) or warm (already
-installed), since the pastes are the biggest part of a cold run's setup time.
+installed), since the pastes are the biggest part of a cold run's setup time. Finish the final
+message with the `Total time:` line from step 7.
 
 ## Options
 
