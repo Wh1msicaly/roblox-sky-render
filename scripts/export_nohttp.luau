@@ -209,5 +209,7 @@ shared.SkyExportClear = function()
 	table.clear(prepared)
 	return "cleared"
 end
+-- Bump this whenever this file changes, and the matching number in SKILL.md.
+shared.SkyExportVersion = 1
 
 return "SkyExport installed: shared.SkyExportPrepare(names), shared.SkyExportPart(name, part), shared.SkyExportClear()"

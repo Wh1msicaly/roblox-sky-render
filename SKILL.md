@@ -80,21 +80,65 @@ is never moved or modified.
 
 ## Workflow
 
-Start the benchmark clock first, as the first tool call of the request (see Benchmark below).
+Do not run any timing commands during the job. Claude Code timestamps every call, so the run is
+timed afterwards from the session transcript (see Benchmark below).
 
 1. Find the Studio instance (`list_roblox_studios`) and confirm which place to use if more than
-   one is open. Find the item (`search_game_tree`) and note its full path.
+   one is open. Then run this **status check** through `execute_luau` (datamodel `Edit`), with
+   `want` set to the start of a word in the item's name, in lower case. In one call it reports whether the
+   renderer and exporter are already installed in this Studio session and lists matching items
+   (an item's own children are left out, so a folder of tools shows once, with its child count):
 
-2. Load the renderer. Read `scripts/render_item.luau` and pass the **whole file, unchanged**, as
-   the `code` of `execute_luau` (datamodel `Edit`). With `target = nil` it only installs three
-   functions and returns "SkyRender installed". They stay available for the rest of the Studio
-   session, so this paste happens once:
+   ```lua
+   local want = "sword" -- start of a word in the item's name, lower case; "" to skip the search
+   local function matches(d)
+   	if not (d:IsA("Model") or d:IsA("Tool") or d:IsA("Accessory") or d:IsA("BasePart") or d:IsA("Folder")) then
+   		return false
+   	end
+   	local name, i = d.Name, string.find(string.lower(d.Name), want, 1, true)
+   	while i do -- only at a word start: "Cats", "Flying Cat", "CatTower", not "Location"
+   		if i == 1 or not string.match(string.sub(name, i - 1, i - 1), "%a") or string.match(string.sub(name, i, i), "%u") then
+   			return true
+   		end
+   		i = string.find(string.lower(name), want, i + 1, true)
+   	end
+   	return false
+   end
+   local out, hits = {}, {}
+   if want ~= "" then
+   	for _, d in workspace:GetDescendants() do
+   		if matches(d) then
+   			local p, inside = d.Parent, false
+   			while p and not inside do inside, p = hits[p] == true, p.Parent end
+   			if not inside then
+   				hits[d] = true
+   				table.insert(out, `{d:GetFullName()} ({d.ClassName}, {#d:GetChildren()} children)`)
+   				if #out >= 40 then table.insert(out, "(more; narrow want)") break end
+   			end
+   		end
+   	end
+   end
+   return `renderer={shared.SkyRenderVersion} exporter={shared.SkyExportVersion}\n` .. table.concat(out, "\n")
+   ```
+
+   The current versions are **renderer=1 exporter=1**. A number that matches means that script is
+   installed and up to date: skip its Read and paste (step 2 below for the renderer, step 1 of
+   "Saving PNGs without HTTP" for the exporter). `nil`
+   or a different number means paste it. If the list does not make the item clear, fall back to
+   `search_game_tree`.
+
+2. Load the renderer, unless the status check showed `renderer=1`. Read
+   `scripts/render_item.luau` and pass the **whole file, unchanged**, as the `code` of
+   `execute_luau` (datamodel `Edit`). With `target = nil` it only installs three functions and
+   returns "SkyRender installed". They stay available for the rest of the Studio session:
 
    - `shared.SkyRender(config)` renders one item, returns a text report
    - `shared.SkyRenderBoard(names)` shows results for inspection
    - `shared.SkyRenderClear()` removes the board and all stored results
 
    If a later call says `shared.SkyRender` is nil (Studio was restarted), paste the file again.
+   When you change `render_item.luau` or `export_nohttp.luau`, bump `shared.SkyRenderVersion` or
+   `shared.SkyExportVersion` at the end of the file and the number above, together.
 
 3. Render. Each call is short:
 
@@ -136,27 +180,29 @@ Start the benchmark clock first, as the first tool call of the request (see Benc
    options until it is right, then `shared.SkyRenderBoard(nil)` to remove the board.
 
 6. Deliver (see below), then `shared.SkyRenderClear()` unless the user wants the results kept in
-   the session. Stop the benchmark clock once the images are saved and sent.
+   the session.
 
-## Benchmark (first request to images sent)
+## Benchmark (user's prompt to the last message)
 
-Time the whole job with `scripts/benchmark.py`, which records wall-clock stamps. Run it from any
-directory; the state lives in the system temp folder between calls.
+Only when the user asks how long a job took. It costs no tool calls during the job: Claude Code
+writes every prompt, tool call and result to the session transcript
+(`~/.claude/projects/<project>/<session>.jsonl`) with a timestamp, and `scripts/benchmark.py`
+reads them afterwards.
 
-1. **Start (T0):** the first tool call of the request runs `python scripts/benchmark.py start`.
-2. **Phase marks:** after each phase finishes, run `python scripts/benchmark.py mark <phase>`:
-   `setup` (renderer and exporter pastes, if this run does them), `render` (all renders done),
-   `export` (all part calls returned), `assemble` (`assemble_png.py` finished).
-3. **Render detail (optional):** the `time` line in each render report is measured inside Studio
-   around that render, so it excludes the export. Use it to compare individual renders.
-4. **Deliver (T1):** when the last PNG is saved or sent, run
-   `python scripts/benchmark.py stop --images <N>`. It prints the report.
-5. **Report:** the phase table, total T0 to T1, the image count, and seconds per image. Model
-   thinking and tool round trips between steps fall outside the phases, so the total is usually a
-   little more than the phases added up. Say so rather than hiding it.
+1. **When:** after the job's turn has ended, in a later turn. Run mid-job, it only sees the calls
+   made so far.
+2. **Run:** `python scripts/benchmark.py` picks the newest session that ran this skill and its last
+   render request. Pass a session id or `.jsonl` path to choose another session, `--list` and
+   `--turn <n>` to choose another request in it, and `--calls` to list every call with its timing.
+3. **Report:** the phase table (find, setup, render, export, assemble, cleanup, bookkeeping,
+   reply), each split into model time (thinking and writing the call, including the script
+   pastes) and tool time (waiting on results). Parallel calls are counted once, so the phases add
+   up to the total. Then the image count and seconds per image.
+4. **Render detail (optional):** the `time` line in each render report is measured inside Studio
+   around that render. Use it to compare individual renders.
 
-Run it warm (renderer and exporter already pasted) for a fair steady-state number, and say which
-kind of run it was.
+Say whether the run was cold (renderer and exporter pasted in this job) or warm (already
+installed), since the pastes are the biggest part of a cold run's setup time.
 
 ## Options
 
@@ -219,8 +265,9 @@ characters, about 8x smaller than base64) and hands it back in fixed-size pieces
 rebuilds the PNGs from the saved files. You never read or copy the data. A 512px render takes
 about 2 pieces.
 
-1. Install the exporter: read `scripts/export_nohttp.luau` and pass the **whole file, unchanged**
-   as the `code` of `execute_luau`. It returns "SkyExport installed". Once per Studio session.
+1. Install the exporter, unless the status check showed `exporter=1`: read
+   `scripts/export_nohttp.luau` and pass the **whole file, unchanged** as the `code` of
+   `execute_luau`. It returns "SkyExport installed". Once per Studio session.
 2. `return shared.SkyExportPrepare({ "banana", "mug" })` (or `{}` for every result). It returns a
    `run=<id>` line and how many parts each image has.
 3. One `execute_luau` call per part: `return shared.SkyExportPart("banana", 1)`, then part 2, and so

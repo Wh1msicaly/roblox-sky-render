@@ -754,6 +754,9 @@ end
 shared.SkyRender = render
 shared.SkyRenderBoard = board
 shared.SkyRenderClear = clear
+-- Bump this whenever this file changes, and the matching number in SKILL.md, so a Studio session
+-- still holding an older copy gets re-pasted instead of reused.
+shared.SkyRenderVersion = 1
 
 if typeof(CONFIG.target) ~= "Instance" then
 	return "SkyRender installed: shared.SkyRender(config), shared.SkyRenderBoard(names), shared.SkyRenderClear()"
